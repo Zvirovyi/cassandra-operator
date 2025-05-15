@@ -35,6 +35,7 @@ class CassandraOperatorCharm(ops.CharmBase):
 
     def _getWorkloadVersion(self):
         """Get the microsample workload version from the snapd API via unix-socket"""
+        logger.debug("---------- GETTING WORKLOAD VERSION ----------")
         snap_name = "cassandra"
         snapd_url = f"http+unix://%2Frun%2Fsnapd.socket/v2/snaps/{snap_name}"
         session = requests_unixsocket.Session()
