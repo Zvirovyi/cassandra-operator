@@ -8,6 +8,8 @@ requires-poetry = ">=2.0.0"
 [tool.poetry.dependencies]
 python = "^3.10"
 ops = ">=2.19.0"
+requests = "^2.32.3"
+requests-unixsocket = "^0.4.1"
 
 [tool.poetry.group.charm-libs.dependencies]
 
