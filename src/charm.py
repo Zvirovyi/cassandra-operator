@@ -24,8 +24,12 @@ class CassandraOperatorCharm(ops.CharmBase):
         """Handle start event."""
         self.unit.status = ops.ActiveStatus()
         
-        version = self._getWorkloadVersion()
-        self.unit.set_workload_version(version)
+        try:
+            version = self.getWorkloadVersion()
+            self.unit.set_workload_version(version)
+        except Exception as e:
+            logger.error(f"Failed to get workload version: {e}")
+            self.unit.set_workload_version("unknown")
         
         
     def _on_install(self, event: ops.InstallEvent):
@@ -37,7 +41,7 @@ class CassandraOperatorCharm(ops.CharmBase):
         logger.debug(f"---------- SNAP INSTALLED ----------")
         self.unit.status = ops.ActiveStatus("Ready")
 
-    def _getWorkloadVersion(self):
+    def getWorkloadVersion(self):
         """Get the microsample workload version from the snapd API via unix-socket"""
         logger.debug("---------- GETTING WORKLOAD VERSION ----------")
         snap_name = "cassandra"
