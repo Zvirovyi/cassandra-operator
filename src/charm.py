@@ -24,6 +24,10 @@ class CassandraOperatorCharm(ops.CharmBase):
         """Handle start event."""
         self.unit.status = ops.ActiveStatus()
         
+        version = self._getWorkloadVersion()
+        self.unit.set_workload_version(version)
+        
+        
     def _on_install(self, event: ops.InstallEvent):
         """Handle install event."""
         
