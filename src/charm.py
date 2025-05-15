@@ -8,6 +8,7 @@ import logging
 
 import ops
 import os 
+import requests_unixsocket
 
 logger = logging.getLogger(__name__)
 
