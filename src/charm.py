@@ -8,6 +8,7 @@ import logging
 import os
 
 import requests_unixsocket
+from charms.operator_libs_linux.v2 import snap
 from ops import (
     ActiveStatus,
     CharmBase,
@@ -32,27 +33,29 @@ class CassandraOperatorCharm(CharmBase):
     def _on_start(self, event: StartEvent) -> None:
         """Handle start event."""
         self.unit.set_workload_version(self._get_workload_version())
-        # TODO: get rid of os.system hack
-        os.system("snap connect cassandra:log-observe")
-        os.system("snap connect cassandra:mount-observe")
-        os.system("snap connect cassandra:process-control")
-        os.system("snap connect cassandra:system-observe")
-        os.system("snap connect cassandra:sys-fs-cgroup-service")
-        os.system("snap connect cassandra:shmem-perf-analyzer")
-        os.system("snap start cassandra")
+        self._cassandra_snap().start(enable=True)
         self._set_unit_status()
 
     def _on_install(self, event: InstallEvent) -> None:
         """Handle install event."""
         self.unit.status = MaintenanceStatus("Installing cassandra snap")
         logger.debug("Installing snap")
-        # TODO: use charms.operator_libs_linux.v2.snap and catch errors
-        os.system("snap install cassandra_5.0.4_amd64.snap --devmode --dangerous")
+        snap.install_local("cassandra_5.0.4_amd64.snap", devmode=True, dangerous=True)
+        cassandra = self._cassandra_snap()
+        cassandra.connect("log-observe")
+        cassandra.connect("mount-observe")
+        cassandra.connect("process-control")
+        cassandra.connect("system-observe")
+        cassandra.connect("sys-fs-cgroup-service")
+        cassandra.connect("shmem-perf-analyzer")
         logger.debug("Snap successfully installed")
         self._set_unit_status()
 
     def _set_unit_status(self) -> None:
         self.unit.status = ActiveStatus()
+
+    def _cassandra_snap(self) -> snap.Snap:
+        return snap.SnapCache()["cassandra"]
 
     def _get_workload_version(self) -> str:
         """Get the microsample workload version from the snapd API via unix-socket."""
