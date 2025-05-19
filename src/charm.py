@@ -5,9 +5,9 @@
 """Charm the application."""
 
 import logging
+import os
 
 import ops
-import os 
 import requests_unixsocket
 
 logger = logging.getLogger(__name__)
@@ -24,26 +24,24 @@ class CassandraOperatorCharm(ops.CharmBase):
     def _on_start(self, event: ops.StartEvent):
         """Handle start event."""
         self.unit.status = ops.ActiveStatus()
-        
+
         try:
-            version = self.getWorkloadVersion()
+            version = self._get_workload_version()
             self.unit.set_workload_version(version)
         except Exception as e:
             logger.error(f"Failed to get workload version: {e}")
             self.unit.set_workload_version("unknown")
-        
-        
+
     def _on_install(self, event: ops.InstallEvent):
         """Handle install event."""
-        
         self.unit.status = ops.MaintenanceStatus("Installing cassandra snap")
-        logger.debug(f"---------- INSTALLING SNAP ----------")
-        os.system(f"snap install cassandra_5.0.4_amd64.snap --devmode --dangerous")
-        logger.debug(f"---------- SNAP INSTALLED ----------")
+        logger.debug("---------- INSTALLING SNAP ----------")
+        os.system("snap install cassandra_5.0.4_amd64.snap --devmode --dangerous")
+        logger.debug("---------- SNAP INSTALLED ----------")
         self.unit.status = ops.ActiveStatus("Ready")
 
-    def getWorkloadVersion(self):
-        """Get the microsample workload version from the snapd API via unix-socket"""
+    def _get_workload_version(self):
+        """Get the microsample workload version from the snapd API via unix-socket."""
         logger.debug("---------- GETTING WORKLOAD VERSION ----------")
         snap_name = "cassandra"
         snapd_url = f"http+unix://%2Frun%2Fsnapd.socket/v2/snaps/{snap_name}"
@@ -61,6 +59,7 @@ class CassandraOperatorCharm(ops.CharmBase):
 
         # Return the workload version
         return workload_version
-        
+
+
 if __name__ == "__main__":  # pragma: nocover
     ops.main(CassandraOperatorCharm)
