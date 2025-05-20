@@ -10,6 +10,7 @@ python = "^3.10"
 ops = ">=2.19.0"
 requests = "^2.32.3"
 requests-unixsocket = "^0.4.1"
+pydantic = "^2.11.4"
 
 [tool.poetry.group.charm-libs.dependencies]
 
