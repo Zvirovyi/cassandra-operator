@@ -1,4 +1,4 @@
-SNAP_CURRENT_PATH = "/snap/cassandra/current"
+SNAP_CURRENT_PATH = "/var/snap/cassandra/current"
 
 SNAP_CONF_PATH = f"{SNAP_CURRENT_PATH}/etc"
 

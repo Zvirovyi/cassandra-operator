@@ -52,7 +52,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         cassandra.connect("shmem-perf-analyzer")
         logger.debug("Snap successfully installed")
 
-        if self.config.profile_values == "testing":
+        if self.config.profile == "testing":
            self.update_env_config(max_heap_size_mb=1024)
         
         self._set_unit_status()
@@ -71,6 +71,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
                 return
 
     def update_env_config(self, max_heap_size_mb: int | None = None) -> bool:
+        logger.debug("Updating env config")
         if max_heap_size_mb is not None:
             if max_heap_size_mb <= 0:
                 raise ValueError("MAX_HEAP_SIZE can not be <= 0")
