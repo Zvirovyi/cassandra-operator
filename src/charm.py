@@ -3,7 +3,7 @@
 # See LICENSE file for licensing details.
 
 """Charm the application."""
-
+import re
 import logging
 import constants
 import subprocess
@@ -23,7 +23,6 @@ from ops import (
 
 logger = logging.getLogger(__name__)
 
-
 class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
     """Charm the application."""
 
@@ -33,6 +32,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         super().__init__(framework)
         framework.observe(self.on.start, self._on_start)
         framework.observe(self.on.install, self._on_install)
+        framework.observe(self.on.config_changed, self._on_config_changed)
         
     def _on_start(self, event: StartEvent) -> None:
         self._set_unit_workload_version()
@@ -52,8 +52,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         cassandra.connect("shmem-perf-analyzer")
         logger.debug("Snap successfully installed")
 
-        if self.config.profile == "testing":
-           self.update_env_config(max_heap_size_mb=1024)
+        self._update_env_config()
         
         self._set_unit_status()
 
@@ -70,36 +69,60 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
                 self.unit.set_workload_version(str(snp["version"]))
                 return
 
-    def update_env_config(self, max_heap_size_mb: int | None = None) -> bool:
-        logger.debug("Updating env config")
-        if max_heap_size_mb is not None:
-            if max_heap_size_mb <= 0:
-                raise ValueError("MAX_HEAP_SIZE can not be <= 0")
-
-            self._swap_with_sed(
-                path=constants.CAS_ENV_CONF_FILE,
-                oldstr='#MAX_HEAP_SIZE="20G"',
-                newstr=f'MAX_HEAP_SIZE="{max_heap_size_mb}M"'
-            )
-            self._swap_with_sed(
-                path=constants.CAS_ENV_CONF_FILE,
-                oldstr='#HEAP_NEWSIZE="10G"',
-                newstr=f'HEAP_NEWSIZE="{max_heap_size_mb // 2}M"'
-            )
-            return True
-
-        return False
-
-    def _swap_with_sed(self, path: str, oldstr: str, newstr: str) -> bool:
+    def _on_config_changed(self, event) -> None:
         try:
-            subprocess.run(
-                ["sed", "-i", f"s/{oldstr}/{newstr}/g", path],
-                check=True
-            )
-            return True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"sed failed: {e}")
-            return False        
+            self._update_env_config()
+        except ValueError as e:
+            self.unit.status = BlockedStatus("Configuration Error. Please check the logs")
+            logger.error("Invalid configuration: %s", str(e))
+            return
+
+    def _update_env_config(self) -> bool:
+        logger.debug("Updating env config")
+
+        if self.config.profile == "testing":
+            self._set_default_env_config_for_testing()
+
+        elif self.config.profile == "production":
+            self._set_default_env_config_for_production()
+        
+        return False
+    
+    def _set_default_env_config_for_testing(self) -> bool:
+        self._swap_with_regex(
+            path=constants.CAS_ENV_CONF_FILE,
+            pattern=r'^[#\s]*MAX_HEAP_SIZE\s*=\s*".*"$',
+            replacement=f'MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"'
+        )
+        self._swap_with_regex(
+            path=constants.CAS_ENV_CONF_FILE,
+            pattern=r'^[#\s]*HEAP_NEWSIZE\s*=\s*".*"$',
+            replacement=f'HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"'
+        )
+        return True
+        
+    def _set_default_env_config_for_production(self) -> bool:
+        # Comment out memory options
+        self._swap_with_regex(
+            path=constants.CAS_ENV_CONF_FILE,
+            pattern=r'^[#\s]*MAX_HEAP_SIZE\s*=\s*".*"$',
+            replacement=f'#MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"'
+        )
+        self._swap_with_regex(
+            path=constants.CAS_ENV_CONF_FILE,
+            pattern=r'^[#\s]*HEAP_NEWSIZE\s*=\s*".*"$',
+            replacement=f'#HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"'
+        )
+        return True
+
+    def _swap_with_regex(self, path: str, pattern: str, replacement: str) -> None:
+        with open(path, 'r') as f:
+            lines = f.readlines()
+    
+        with open(path, 'w') as f:
+            for line in lines:
+                new_line = re.sub(pattern, replacement, line)
+                f.write(new_line)
 
 
 if __name__ == "__main__":  # pragma: nocover

@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class CharmConfig(BaseConfigModel):
     """Manager for the structured configuration."""
     profile: str
+    _max_heap_size_mb: int = 1024
 
     @validator("profile")
     @classmethod
