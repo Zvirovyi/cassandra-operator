@@ -13,6 +13,7 @@ from charms.operator_libs_linux.v2 import snap
 from config import CharmConfig
 from ops import (
     ActiveStatus,
+    BlockedStatus,
     CharmBase,
     Framework,
     InstallEvent,
@@ -72,7 +73,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
     def _on_config_changed(self, event) -> None:
         try:
             self._update_env_config()
-        except ValueError as e:
+        except  as e:
             self.unit.status = BlockedStatus("Configuration Error. Please check the logs")
             logger.error("Invalid configuration: %s", str(e))
             return
