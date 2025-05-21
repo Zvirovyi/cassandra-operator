@@ -73,7 +73,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
     def _on_config_changed(self, event) -> None:
         try:
             self._update_env_config()
-        except  as e:
+        except Exception as e:
             self.unit.status = BlockedStatus("Configuration Error. Please check the logs")
             logger.error("Invalid configuration: %s", str(e))
             return
