@@ -92,15 +92,15 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
     def _set_default_env_config_for_testing(self) -> bool:
         self._swap_with_regex(
             path=constants.CAS_ENV_CONF_FILE,
-            pattern=r'^[#\s]*MAX_HEAP_SIZE\s*=\s*".*"$',
+            pattern=r'^\s*#?MAX_HEAP_SIZE="[^"]*"$',
             replacement=f'MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"',
-            n=1
+            count=1
         )
         self._swap_with_regex(
             path=constants.CAS_ENV_CONF_FILE,
-            pattern=r'^[#\s]*HEAP_NEWSIZE\s*=\s*".*"$',
+            pattern=r'^\s*#?HEAP_NEWSIZE="[^"]*"$',
             replacement=f'HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"',
-            n=1
+            count=1
         )
         return True
         
@@ -108,37 +108,26 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         # Comment out memory options
         self._swap_with_regex(
             path=constants.CAS_ENV_CONF_FILE,
-            pattern=r'^[#\s]*MAX_HEAP_SIZE\s*=\s*".*"$',
+            pattern=r'^\s*#?MAX_HEAP_SIZE="[^"]*"$',
             replacement=f'#MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"',
-            n=1
+            count=1
         )
         self._swap_with_regex(
             path=constants.CAS_ENV_CONF_FILE,
-            pattern=r'^[#\s]*HEAP_NEWSIZE\s*=\s*".*"$',
+            pattern=r'^\s*#?HEAP_NEWSIZE="[^"]*"$',
             replacement=f'#HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"',
-            n=1
+            count=1
         )
         return True
 
-    # If n < 0, there is no limit on the number of replacements.
-    def _swap_with_regex(self, path: str, pattern: str, replacement: str, n: int = -1) -> None:
-        if n == 0:
-            return
-    
-        replacements_left = n if n > 0 else float('inf')
-    
+    def _swap_with_regex(self, path: str, pattern: str, replacement: str, count: int = 0) -> None:
         with open(path, 'r') as f:
-            lines = f.readlines()
-    
+            content = f.read()
+
+        new_content, _ = re.subn(pattern, replacement, content, count, flags=re.MULTILINE)
+
         with open(path, 'w') as f:
-            for line in lines:
-                if replacements_left <= 0:
-                    f.write(line)
-                    continue
-    
-                new_line, num_subs = re.subn(pattern, replacement, line, count=replacements_left)
-                replacements_left -= num_subs
-                f.write(new_line)
+            f.write(new_content)
 
 
 if __name__ == "__main__":  # pragma: nocover
