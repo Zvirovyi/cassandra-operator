@@ -124,6 +124,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
             for line in lines:
                 new_line = re.sub(pattern, replacement, line)
                 f.write(new_line)
+                return
 
 
 if __name__ == "__main__":  # pragma: nocover
