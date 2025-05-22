@@ -93,12 +93,14 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         self._swap_with_regex(
             path=constants.CAS_ENV_CONF_FILE,
             pattern=r'^[#\s]*MAX_HEAP_SIZE\s*=\s*".*"$',
-            replacement=f'MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"'
+            replacement=f'MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"',
+            n=1
         )
         self._swap_with_regex(
             path=constants.CAS_ENV_CONF_FILE,
             pattern=r'^[#\s]*HEAP_NEWSIZE\s*=\s*".*"$',
-            replacement=f'HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"'
+            replacement=f'HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"',
+            n=1
         )
         return True
         
@@ -107,24 +109,36 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         self._swap_with_regex(
             path=constants.CAS_ENV_CONF_FILE,
             pattern=r'^[#\s]*MAX_HEAP_SIZE\s*=\s*".*"$',
-            replacement=f'#MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"'
+            replacement=f'#MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"',
+            n=1
         )
         self._swap_with_regex(
             path=constants.CAS_ENV_CONF_FILE,
             pattern=r'^[#\s]*HEAP_NEWSIZE\s*=\s*".*"$',
-            replacement=f'#HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"'
+            replacement=f'#HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"',
+            n=1
         )
         return True
 
-    def _swap_with_regex(self, path: str, pattern: str, replacement: str) -> None:
+    # If n < 0, there is no limit on the number of replacements.
+    def _swap_with_regex(self, path: str, pattern: str, replacement: str, n: int = -1) -> None:
+        if n == 0:
+            return
+    
+        replacements_left = n if n > 0 else float('inf')
+    
         with open(path, 'r') as f:
             lines = f.readlines()
     
         with open(path, 'w') as f:
             for line in lines:
-                new_line = re.sub(pattern, replacement, line)
+                if replacements_left <= 0:
+                    f.write(line)
+                    continue
+    
+                new_line, num_subs = re.subn(pattern, replacement, line, count=replacements_left)
+                replacements_left -= num_subs
                 f.write(new_line)
-                return
 
 
 if __name__ == "__main__":  # pragma: nocover
