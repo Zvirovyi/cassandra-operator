@@ -159,6 +159,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
             replacement=f'MAX_HEAP_SIZE="{max_heap_size_mb}M"'
             if max_heap_size_mb
             else '#MAX_HEAP_SIZE=""',
+            count=1
         )
         self._swap_with_regex(
             path=CAS_ENV_CONF_FILE,
@@ -166,6 +167,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
             replacement=f'HEAP_NEWSIZE="{max_heap_size_mb // 2}M"'
             if max_heap_size_mb
             else '#HEAP_NEWSIZE=""',
+            count=1
         )
 
     def _swap_with_regex(self, path: str, pattern: str, replacement: str, count: int = 0) -> None:
