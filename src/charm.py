@@ -3,25 +3,32 @@
 # See LICENSE file for licensing details.
 
 """Charm the application."""
-import re
-import logging
-import constants
-import subprocess
 
+import logging
+import re
+import typing
+
+import pydantic
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.operator_libs_linux.v2 import snap
-from config import CharmConfig
 from ops import (
     ActiveStatus,
-    CharmBase,
+    BlockedStatus,
+    ConfigChangedEvent,
     Framework,
     InstallEvent,
     MaintenanceStatus,
     StartEvent,
+    UpdateStatusEvent,
+    WaitingStatus,
     main,
 )
 
+from config import CharmConfig
+from constants import CAS_ENV_CONF_FILE, PEER_RELATION
+
 logger = logging.getLogger(__name__)
+
 
 class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
     """Charm the application."""
@@ -32,16 +39,32 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         super().__init__(framework)
         framework.observe(self.on.start, self._on_start)
         framework.observe(self.on.install, self._on_install)
+        framework.observe(self.on.update_status, self._on_update_status)
         framework.observe(self.on.config_changed, self._on_config_changed)
-        
+
     def _on_start(self, event: StartEvent) -> None:
+        self.unit.status = MaintenanceStatus("Starting Cassandra daemon")
+
         self._set_unit_workload_version()
-        self._cassandra_snap().start(["daemon"], True)
+
+        logger.debug("Initializing Cassandra config")
+        if not self._update_cassandra_config():
+            logger.debug(
+                "Deferring start event (workload initialization) due to config validation error"
+            )
+            event.defer()
+            self._set_unit_status()
+            return
+
+        logger.debug("Starting Cassandra daemon (initializing workload)")
+        self._cassandra_snap().start(["daemon"])
+        self._unit_peer_data["workload-initialized"] = "True"
+
         self._set_unit_status()
 
     def _on_install(self, event: InstallEvent) -> None:
-        self.unit.status = MaintenanceStatus("Installing cassandra snap")
-        logger.debug("Installing snap")
+        self.unit.status = MaintenanceStatus("Installing Cassandra snap")
+        logger.debug("Installing & configuring Cassandra snap")
         snap.install_local("cassandra_5.0.4_amd64.snap", devmode=True, dangerous=True)
         cassandra = self._cassandra_snap()
         cassandra.connect("log-observe")
@@ -50,13 +73,39 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         cassandra.connect("system-observe")
         cassandra.connect("sys-fs-cgroup-service")
         cassandra.connect("shmem-perf-analyzer")
-        logger.debug("Snap successfully installed")
-
-        self._update_env_config()
-        
         self._set_unit_status()
 
+    def _on_update_status(self, event: UpdateStatusEvent) -> None:
+        self._set_unit_status()
+
+    @property
+    def _app_peer_data(self) -> dict[str, str]:
+        """Application peer relation data object."""
+        relation = self.model.get_relation(PEER_RELATION)
+        if relation is None:
+            return {}
+
+        return typing.cast(dict[str, str], relation.data[self.app])
+
+    @property
+    def _unit_peer_data(self) -> dict[str, str]:
+        """Unit peer relation data object."""
+        relation = self.model.get_relation(PEER_RELATION)
+        if relation is None:
+            return {}
+
+        return typing.cast(dict[str, str], relation.data[self.unit])
+
     def _set_unit_status(self) -> None:
+        if "bad-config" in self._unit_peer_data:
+            self.unit.status = BlockedStatus("Configuration error. Check logs")
+            return
+        if "workload-initialized" not in self._unit_peer_data:
+            self.unit.status = WaitingStatus("Waiting for workload initialization")
+            return
+        if not self._cassandra_snap().services["daemon"]["active"]:
+            self.unit.status = WaitingStatus("Service is not healthy. Restarting")
+            return
         self.unit.status = ActiveStatus()
 
     def _cassandra_snap(self) -> snap.Snap:
@@ -69,57 +118,61 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
                 self.unit.set_workload_version(str(snp["version"]))
                 return
 
-    def _on_config_changed(self, event) -> None:
-        try:
-            self._update_env_config()
-        except ValueError as e:
-            self.unit.status = BlockedStatus("Configuration Error. Please check the logs")
-            logger.error("Invalid configuration: %s", str(e))
+    def _on_config_changed(self, event: ConfigChangedEvent) -> None:
+        if "workload-initialized" not in self._unit_peer_data:
+            logger.debug("Deferring config changed event due to workload isn't initialized")
+            event.defer()
             return
 
-    def _update_env_config(self) -> bool:
-        logger.debug("Updating env config")
+        logger.debug("Updating Cassandra config due to charm config change")
+        if not self._update_cassandra_config():
+            logger.debug("Deferring config changed event due to charm config validation error")
+            event.defer()
+            self._set_unit_status()
+            return
 
-        if self.config.profile == "testing":
-            self._set_default_env_config_for_testing()
+        logger.debug("Restarting Cassandra daemon due to charm config change")
+        self._cassandra_snap().restart(["daemon"])
 
-        elif self.config.profile == "production":
-            self._set_default_env_config_for_production()
-        
-        return False
-    
-    def _set_default_env_config_for_testing(self) -> bool:
-        self._swap_with_regex(
-            path=constants.CAS_ENV_CONF_FILE,
-            pattern=r'^[#\s]*MAX_HEAP_SIZE\s*=\s*".*"$',
-            replacement=f'MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"'
-        )
-        self._swap_with_regex(
-            path=constants.CAS_ENV_CONF_FILE,
-            pattern=r'^[#\s]*HEAP_NEWSIZE\s*=\s*".*"$',
-            replacement=f'HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"'
+        self._set_unit_status()
+
+    def _update_cassandra_config(self) -> bool:
+        try:
+            self.config
+        except pydantic.ValidationError as e:
+            logger.debug(f"Config haven't passed validation: {e}")
+            self._unit_peer_data["bad-config"] = "True"
+            return False
+
+        self._unit_peer_data.update({"bad-config": ""})
+
+        logger.debug("Updating Cassandra env config")
+        self._render_cassandra_env_config(
+            max_heap_size_mb=1024 if self.config.profile == "testing" else None
         )
         return True
-        
-    def _set_default_env_config_for_production(self) -> bool:
-        # Comment out memory options
+
+    def _render_cassandra_env_config(self, max_heap_size_mb: int | None) -> None:
         self._swap_with_regex(
-            path=constants.CAS_ENV_CONF_FILE,
+            path=CAS_ENV_CONF_FILE,
             pattern=r'^[#\s]*MAX_HEAP_SIZE\s*=\s*".*"$',
-            replacement=f'#MAX_HEAP_SIZE="{self.config._max_heap_size_mb}M"'
+            replacement=f'MAX_HEAP_SIZE="{max_heap_size_mb}M"'
+            if max_heap_size_mb
+            else '#MAX_HEAP_SIZE=""',
         )
         self._swap_with_regex(
-            path=constants.CAS_ENV_CONF_FILE,
+            path=CAS_ENV_CONF_FILE,
             pattern=r'^[#\s]*HEAP_NEWSIZE\s*=\s*".*"$',
-            replacement=f'#HEAP_NEWSIZE="{self.config._max_heap_size_mb // 2}M"'
+            replacement=f'HEAP_NEWSIZE="{max_heap_size_mb // 2}M"'
+            if max_heap_size_mb
+            else '#HEAP_NEWSIZE=""',
         )
-        return True
 
     def _swap_with_regex(self, path: str, pattern: str, replacement: str) -> None:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             lines = f.readlines()
-    
-        with open(path, 'w') as f:
+
+        with open(path, "w") as f:
             for line in lines:
                 new_line = re.sub(pattern, replacement, line)
                 f.write(new_line)

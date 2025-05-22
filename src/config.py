@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+"""Typed charm config with validation."""
 
 import logging
 
@@ -7,10 +11,11 @@ from pydantic import validator
 
 logger = logging.getLogger(__name__)
 
+
 class CharmConfig(BaseConfigModel):
     """Manager for the structured configuration."""
+
     profile: str
-    _max_heap_size_mb: int = 1024
 
     @validator("profile")
     @classmethod
