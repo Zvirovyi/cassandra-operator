@@ -6,6 +6,7 @@
 
 import logging
 import re
+import os
 import typing
 
 import pydantic
@@ -25,7 +26,7 @@ from ops import (
 )
 
 from config import CharmConfig
-from constants import CAS_ENV_CONF_FILE, PEER_RELATION
+from constants import CAS_ENV_CONF_FILE, PEER_RELATION, MGMT_API_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +57,9 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
             self._set_unit_status()
             return
 
-        logger.debug("Starting Cassandra daemon (initializing workload)")
-        self._cassandra_snap().start(["daemon"])
+        logger.debug("Starting Cassandra management API daemon (initializing workload)")
+
+        self._cassandra_snap().start(["mgmt-server"])
         self._unit_peer_data["workload-initialized"] = "True"
 
         self._set_unit_status()
@@ -103,7 +105,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         if "workload-initialized" not in self._unit_peer_data:
             self.unit.status = WaitingStatus("Waiting for workload initialization")
             return
-        if not self._cassandra_snap().services["daemon"]["active"]:
+        if not self._cassandra_snap().services["mgmt-server"]["active"]:
             self.unit.status = WaitingStatus("Service is not healthy. Restarting")
             return
         self.unit.status = ActiveStatus()
@@ -132,9 +134,10 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
             return
 
         logger.debug("Restarting Cassandra daemon due to charm config change")
-        self._cassandra_snap().restart(["daemon"])
+        self._cassandra_snap().restart(["mgmt-server"])
 
         self._set_unit_status()
+
 
     def _update_cassandra_config(self) -> bool:
         try:
@@ -148,11 +151,12 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
 
         logger.debug("Updating Cassandra env config")
         self._render_cassandra_env_config(
-            max_heap_size_mb=1024 if self.config.profile == "testing" else None
+            max_heap_size_mb=1024 if self.config.profile == "testing" else None,
+            enable_mgmt_server=True
         )
         return True
 
-    def _render_cassandra_env_config(self, max_heap_size_mb: int | None) -> None:
+    def _render_cassandra_env_config(self, max_heap_size_mb: int | None, enable_mgmt_server: bool = True) -> None:
         self._swap_with_regex(
             path=CAS_ENV_CONF_FILE,
             pattern=r'^\s*#?MAX_HEAP_SIZE="[^"]*"$',
@@ -170,6 +174,19 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
             count=1
         )
 
+        if enable_mgmt_server:
+            mgmtapi_agent_line = (
+                f'JVM_OPTS="$JVM_OPTS -javaagent:{MGMT_API_DIR}/datastax-mgmtapi-agent.jar"'
+            )
+            with open(CAS_ENV_CONF_FILE, "r+", encoding="utf-8") as f:
+                content = f.read()
+                if mgmtapi_agent_line not in content:
+                    f.seek(0, os.SEEK_END)  # переместиться в конец
+                    if not content.endswith("\n"):
+                        f.write("\n")
+                    f.write(mgmtapi_agent_line + "\n")
+                    logger.debug("---------- Wrote line to env ----------")
+                
     def _swap_with_regex(self, path: str, pattern: str, replacement: str, count: int = 0) -> None:
         with open(path, 'r') as f:
             content = f.read()
