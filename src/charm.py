@@ -7,14 +7,8 @@
 import logging
 import os
 import re
-import typing
 from typing import cast
 
-from charms.data_platform_libs.v0.data_models import TypedCharmBase
-from charms.operator_libs_linux.v2 import snap
-from config import CharmConfig
-from constants import CAS_ENV_CONF_FILE, MGMT_API_DIR, PEER_RELATION
-from data_model import AppPeerData, UnitPeerData
 from ops import (
     ActiveStatus,
     BlockedStatus,
@@ -29,6 +23,12 @@ from ops import (
     main,
 )
 from pydantic import ValidationError
+
+from charms.data_platform_libs.v0.data_models import TypedCharmBase
+from charms.operator_libs_linux.v2 import snap
+from config import CharmConfig
+from constants import CAS_ENV_CONF_FILE, MGMT_API_DIR, PEER_RELATION
+from data_model import AppPeerData, UnitPeerData
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
 
         self._set_unit_status()
 
-    def _on_install(self, event: InstallEvent) -> None:
+    def _on_install(self, _: InstallEvent) -> None:
         self.unit.status = MaintenanceStatus("Installing Cassandra snap")
         logger.debug("Installing & configuring Cassandra snap")
         snap.install_local("cassandra_5.0.4_amd64.snap", devmode=True, dangerous=True)
@@ -80,7 +80,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         cassandra.connect("shmem-perf-analyzer")
         self._set_unit_status()
 
-    def _on_update_status(self, event: UpdateStatusEvent) -> None:
+    def _on_update_status(self, _: UpdateStatusEvent) -> None:
         self._set_unit_status()
 
     @property
