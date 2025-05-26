@@ -5,13 +5,16 @@
 """Charm the application."""
 
 import logging
-import re
 import os
+import re
 import typing
+from typing import cast
 
-import pydantic
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.operator_libs_linux.v2 import snap
+from config import CharmConfig
+from constants import CAS_ENV_CONF_FILE, MGMT_API_DIR, PEER_RELATION
+from data_model import AppPeerData, UnitPeerData
 from ops import (
     ActiveStatus,
     BlockedStatus,
@@ -19,14 +22,13 @@ from ops import (
     Framework,
     InstallEvent,
     MaintenanceStatus,
+    RelationDataContent,
     StartEvent,
     UpdateStatusEvent,
     WaitingStatus,
     main,
 )
-
-from config import CharmConfig
-from constants import CAS_ENV_CONF_FILE, PEER_RELATION, MGMT_API_DIR
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
 
     def __init__(self, framework: Framework):
         super().__init__(framework)
+        
         framework.observe(self.on.start, self._on_start)
         framework.observe(self.on.install, self._on_install)
         framework.observe(self.on.update_status, self._on_update_status)
@@ -60,7 +63,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         logger.debug("Starting Cassandra management API daemon (initializing workload)")
 
         self._cassandra_snap().start(["mgmt-server"])
-        self._unit_peer_data["workload-initialized"] = "True"
+        self._unit_peer_data.update({"workload-initialized": "True"})        
 
         self._set_unit_status()
 
@@ -81,28 +84,25 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         self._set_unit_status()
 
     @property
-    def _app_peer_data(self) -> dict[str, str]:
-        """Application peer relation data object."""
+    def _app_peer_data(self) -> AppPeerData:
         relation = self.model.get_relation(PEER_RELATION)
         if relation is None:
-            return {}
-
-        return typing.cast(dict[str, str], relation.data[self.app])
+            return AppPeerData(cast(RelationDataContent, {}))
+        return AppPeerData(relation.data[self.app])
 
     @property
-    def _unit_peer_data(self) -> dict[str, str]:
-        """Unit peer relation data object."""
+    def _unit_peer_data(self) -> UnitPeerData:
         relation = self.model.get_relation(PEER_RELATION)
         if relation is None:
-            return {}
+            return UnitPeerData(cast(RelationDataContent, {}))
+        return UnitPeerData(relation.data[self.unit])
 
-        return typing.cast(dict[str, str], relation.data[self.unit])
 
     def _set_unit_status(self) -> None:
-        if "bad-config" in self._unit_peer_data:
+        if self._unit_peer_data.get("bad-config") == "True":
             self.unit.status = BlockedStatus("Configuration error. Check logs")
             return
-        if "workload-initialized" not in self._unit_peer_data:
+        if self._unit_peer_data.get("workload-initialized") == "False":
             self.unit.status = WaitingStatus("Waiting for workload initialization")
             return
         if not self._cassandra_snap().services["mgmt-server"]["active"]:
@@ -121,7 +121,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
                 return
 
     def _on_config_changed(self, event: ConfigChangedEvent) -> None:
-        if "workload-initialized" not in self._unit_peer_data:
+        if self._unit_peer_data.get("workload-initialized") == "False":
             logger.debug("Deferring config changed event due to workload isn't initialized")
             event.defer()
             return
@@ -142,12 +142,12 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
     def _update_cassandra_config(self) -> bool:
         try:
             self.config
-        except pydantic.ValidationError as e:
+        except ValidationError as e:
             logger.debug(f"Config haven't passed validation: {e}")
-            self._unit_peer_data["bad-config"] = "True"
+            self._unit_peer_data.update({"bad-config":  "True"})
             return False
 
-        self._unit_peer_data.update({"bad-config": ""})
+        self._unit_peer_data.update({"bad-config":  "False"})
 
         logger.debug("Updating Cassandra env config")
         self._render_cassandra_env_config(
