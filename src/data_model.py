@@ -22,7 +22,7 @@ class UnitPeerData:
         logger.info(f"[UnitPeerData] Updating with: {new_data}")
         for key, value in new_data.items():
             self._raw[key] = value
-        logger.info(f"[UnitPeerData] updated unit data: {dict(self._raw)}")
+        logger.info(f"[UnitPeerData] Updated data: {dict(self._raw)}")
 
     def as_dict(self) -> dict[str, str]:
         return dict(self._raw)
@@ -39,7 +39,7 @@ class AppPeerData:
         logger.info(f"[AppPeerData] Updating with: {new_data}")
         for key, value in new_data.items():
             self._raw[key] = value
-        logger.info(f"[AppPeerData] updated app data: {dict(self._raw)}")
+        logger.info(f"[AppPeerData] Updated data: {dict(self._raw)}")
 
     def as_dict(self) -> dict[str, str]:
         return dict(self._raw)
