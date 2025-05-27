@@ -5,7 +5,7 @@
 """Typed charm config with validation."""
 
 import logging
-
+from typing import Optional
 from charms.data_platform_libs.v0.data_models import BaseConfigModel
 from pydantic import field_validator
 
@@ -16,6 +16,7 @@ class CharmConfig(BaseConfigModel):
     """Manager for the structured configuration."""
 
     profile: str
+    cluster_name: Optional[str] = None
 
     @field_validator("profile")
     @classmethod
@@ -24,4 +25,4 @@ class CharmConfig(BaseConfigModel):
         if value not in ["testing", "production"]:
             raise ValueError("Value not one of 'testing' or 'production'")
 
-        return value
+        return value    

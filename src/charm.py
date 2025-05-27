@@ -7,6 +7,7 @@
 import logging
 import os
 import re
+import yaml
 from typing import cast
 
 from ops import (
@@ -27,7 +28,7 @@ from pydantic import ValidationError
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.operator_libs_linux.v2 import snap
 from config import CharmConfig
-from constants import CAS_ENV_CONF_FILE, MGMT_API_DIR, PEER_RELATION
+from constants import CAS_CONF_FILE, CAS_ENV_CONF_FILE, MGMT_API_DIR, PEER_RELATION
 from data_model import AppPeerData, UnitPeerData
 
 logger = logging.getLogger(__name__)
@@ -154,8 +155,27 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
             max_heap_size_mb=1024 if self.config.profile == "testing" else None,
             enable_mgmt_server=True
         )
+
+        logger.debug("Updating Cassandra config")
+        self._render_cassandra_config(
+            cluster_name=self.config.cluster_name
+        )
         return True
 
+    def _render_cassandra_config(self, cluster_name: str | None) -> None:
+        with open(CAS_CONF_FILE, 'r', encoding='utf-8') as f:
+            current_data = yaml.safe_load(f) or {}
+
+        if not isinstance(current_data, dict):
+            raise ValueError("Current cassandra config file is not valid")
+
+
+        if cluster_name is not None:
+            current_data.update({"cluster_name": cluster_name})
+
+        with open(CAS_CONF_FILE, 'w', encoding='utf-8') as f:
+            yaml.dump(current_data, f, allow_unicode=True, default_flow_style=False)
+                
     def _render_cassandra_env_config(self, max_heap_size_mb: int | None, enable_mgmt_server: bool = True) -> None:
         self._swap_with_regex(
             path=CAS_ENV_CONF_FILE,

@@ -6,3 +6,6 @@ options:
     # TODO: description
     type: string
     default: production
+  cluster_name:
+    # TODO: description
+    type: string
