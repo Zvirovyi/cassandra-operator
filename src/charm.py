@@ -24,6 +24,7 @@ from ops import (
     main,
 )
 from pydantic import ValidationError
+from cassandra_client.cassandra_cql import CassandraClient
 
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.operator_libs_linux.v2 import snap
@@ -47,6 +48,8 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         framework.observe(self.on.update_status, self._on_update_status)
         framework.observe(self.on.config_changed, self._on_config_changed)
 
+        self.cassandra_client = CassandraClient(host_list=["127.0.0.1"])
+
     def _on_start(self, event: StartEvent) -> None:
         self.unit.status = MaintenanceStatus("Starting Cassandra daemon")
 
@@ -64,7 +67,7 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         logger.debug("Starting Cassandra management API daemon (initializing workload)")
 
         self._cassandra_snap().start(["mgmt-server"])
-        self._unit_peer_data.update({"workload-initialized": "True"})        
+        self._unit_peer_data.update({"workload-initialized": "True"})
 
         self._set_unit_status()
 
