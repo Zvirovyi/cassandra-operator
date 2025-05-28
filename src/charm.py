@@ -69,6 +69,9 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
         self._cassandra_snap().start(["mgmt-server"])
         self._unit_peer_data.update({"workload-initialized": "True"})
 
+        self._create_test_keyspace()
+        self._create_test_table()
+
         self._set_unit_status()
 
     def _on_install(self, _: InstallEvent) -> None:
@@ -218,6 +221,23 @@ class CassandraOperatorCharm(TypedCharmBase[CharmConfig]):
 
         with open(path, 'w') as f:
             f.write(new_content)
+
+    def _create_test_keyspace(self) -> bool:
+        try:
+          self.cassandra_client.create_keyspace("test-keyspace")
+        except Exception as e:
+            logger.error(f"Failed to create test keyspace: {e}")
+            return False
+        return True
+            
+    def _create_test_table(self) -> bool:
+        try:        
+            self.cassandra_client.create_table("test-keyspace", "test-table")
+        except Exception as e:
+            logger.error(f"Failed to create test table: {e}")
+            return False
+        return True
+        
 
 
 if __name__ == "__main__":  # pragma: nocover
