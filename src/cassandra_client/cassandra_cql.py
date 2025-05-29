@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import logging
 from typing import List, Optional
+from cassandra.io.libevreactor import LibevConnection
 from cassandra.cluster import Cluster, Session
+from cassandra import ProtocolVersion
 from cassandra.auth import PlainTextAuthProvider
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,7 @@ class CassandraClient:
         self.host_list = host_list
         self.user = user
         self.password = password
+        self.auth_provider = None
 
         if self.user is not None and self.password is not None:
             self.auth_provider = PlainTextAuthProvider(username=self.user, password=self.password)
